@@ -1,4 +1,4 @@
-File: ./app/src/androidTest/java/cl/moviedbapp/ExampleInstrumentedTest.kt
+./app/src/androidTest/java/cl/moviedbapp/ExampleInstrumentedTest.kt
 
 package cl.moviedbapp
 
@@ -24,9 +24,8 @@ class ExampleInstrumentedTest {
         assertEquals("cl.moviedbapp", appContext.packageName)
     }
 }
-================================================================================
 
-File: ./app/src/test/java/cl/moviedbapp/ExampleUnitTest.kt
+./app/src/test/java/cl/moviedbapp/ExampleUnitTest.kt
 
 package cl.moviedbapp
 
@@ -45,15 +44,29 @@ class ExampleUnitTest {
         assertEquals(4, 2 + 2)
     }
 }
-================================================================================
 
-File: ./app/src/main/java/cl/moviedbapp/MainActivity.kt
+./app/src/main/java/cl/moviedbapp/MyApplication.kt
+
+package cl.moviedbapp
+
+import android.app.Application
+import dagger.hilt.android.HiltAndroidApp
+
+@HiltAndroidApp
+class MyApplication : Application() {
+}
+
+
+./app/src/main/java/cl/moviedbapp/MainActivity.kt
 
 package cl.moviedbapp
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -61,7 +74,6 @@ import cl.moviedbapp.ui.theme.MovieDBAppTheme
 import cl.moviedbapp.view.HomeView
 import cl.moviedbapp.view.MovieDetailView
 import cl.moviedbapp.viewmodel.MovieViewModel
-import androidx.hilt.navigation.compose.hiltViewModel
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -71,7 +83,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             MovieDBAppTheme {
                 val navController = rememberNavController()
-                val viewModel: MovieViewModel = hiltViewModel() // Usar hiltViewModel() en lugar de viewModel()
+                val viewModel: MovieViewModel = hiltViewModel()
 
                 NavHost(navController = navController, startDestination = "home") {
                     composable("home") {
@@ -89,52 +101,77 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-================================================================================
 
-File: ./app/src/main/java/cl/moviedbapp/viewmodel/MovieViewModel.kt
+./app/src/main/java/cl/moviedbapp/viewmodel/MovieViewModel.kt
 
 package cl.moviedbapp.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cl.moviedbapp.repository.MovieRepository
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import cl.moviedbapp.model.MovieEntity
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
 import kotlinx.coroutines.flow.Flow
-import cl.moviedbapp.db.MovieEntity
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 
 @HiltViewModel
-class MovieViewModel @Inject constructor(
-    private val repository: MovieRepository // Inyecta el repositorio con @Inject
+class MovieViewModel @Inject constructor(  // Añadir la anotación @HiltViewModel y el constructor con @Inject
+    private val repository: MovieRepository
 ) : ViewModel() {
 
-    val movieList: Flow<List<MovieEntity>> = repository.getAllMovies()
+    private val _movieList = MutableStateFlow<List<MovieEntity>>(emptyList())
+    val movieList: StateFlow<List<MovieEntity>> = _movieList
 
-    private val _isLoading = MutableStateFlow(false)
-    val isLoading: StateFlow<Boolean> = _isLoading
+    init {
+        fetchMovies()
+    }
 
-    // Obtener películas desde la API y guardar en SQLite
-    fun fetchMoviesFromApi(page: Int) {
+    private fun fetchMovies() {
         viewModelScope.launch {
-            val movies = repository.getMoviesFromApi(page)
-            repository.insertMovies(movies)
+            repository.getAllMoviesFromDb()
+                .onEach { movies ->
+                    if (movies.isEmpty()) {
+                        // Fetch from API if the database is empty
+                        val response = repository.getMoviesPaged(1)
+                        val movieEntities = response.results.map { movie ->
+                            MovieEntity(
+                                movie.id,
+                                movie.title,
+                                movie.overview,
+                                movie.posterPath,
+                                movie.releaseDate,
+                                movie.voteAverage
+                            )
+                        }
+                        repository.insertMovies(movieEntities)
+                    } else {
+                        _movieList.value = movies
+                    }
+                }
+                .launchIn(this)
         }
     }
 
-    // Obtener una película por su ID desde la base de datos
-    fun getMovieById(id: String): Flow<MovieEntity?> {
-        return movieList.map { movies ->
-            movies.find { it.id == id.toIntOrNull() }
-        }
+    fun getMoviesPager(): Flow<PagingData<MovieEntity>> {
+        return Pager(
+            config = PagingConfig(pageSize = 20, enablePlaceholders = false),
+            pagingSourceFactory = { repository.getPagingSource() }
+        ).flow.cachedIn(viewModelScope)
+    }
+
+    fun getMovieById(id: Int): MovieEntity? {
+        return _movieList.value.find { it.id == id }
     }
 }
-================================================================================
 
-File: ./app/src/main/java/cl/moviedbapp/ui/theme/Color.kt
+
+./app/src/main/java/cl/moviedbapp/ui/theme/Color.kt
 
 package cl.moviedbapp.ui.theme
 
@@ -147,9 +184,8 @@ val Pink80 = Color(0xFFEFB8C8)
 val Purple40 = Color(0xFF6650a4)
 val PurpleGrey40 = Color(0xFF625b71)
 val Pink40 = Color(0xFF7D5260)
-================================================================================
 
-File: ./app/src/main/java/cl/moviedbapp/ui/theme/Theme.kt
+./app/src/main/java/cl/moviedbapp/ui/theme/Theme.kt
 
 package cl.moviedbapp.ui.theme
 
@@ -209,9 +245,8 @@ fun MovieDBAppTheme(
         content = content
     )
 }
-================================================================================
 
-File: ./app/src/main/java/cl/moviedbapp/ui/theme/Type.kt
+./app/src/main/java/cl/moviedbapp/ui/theme/Type.kt
 
 package cl.moviedbapp.ui.theme
 
@@ -247,9 +282,8 @@ val Typography = Typography(
     )
     */
 )
-================================================================================
 
-File: ./app/src/main/java/cl/moviedbapp/repository/MovieRepository.kt
+./app/src/main/java/cl/moviedbapp/repository/MovieRepository.kt
 
 package cl.moviedbapp.repository
 
@@ -259,13 +293,14 @@ import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.GET
 import retrofit2.http.Query
-import cl.moviedbapp.db.MovieDao
-import cl.moviedbapp.db.MovieEntity
-import cl.moviedbapp.model.Movie
+import cl.moviedbapp.model.MovieDao
+import cl.moviedbapp.model.MovieEntity
 import kotlinx.coroutines.flow.Flow
+import javax.inject.Inject
+import androidx.paging.PagingSource
 
 interface MovieApi {
-    @GET("movie/now_playing")
+    @GET("discover/movie")
     suspend fun getMoviesPaged(
         @Query("page") page: Int,
         @Query("language") language: String = "en-US",
@@ -273,7 +308,7 @@ interface MovieApi {
     ): MovieResponse
 }
 
-class MovieRepository(private val movieDao: MovieDao) {
+class MovieRepository @Inject constructor(private val movieDao: MovieDao) {
 
     private val retrofit = Retrofit.Builder()
         .baseUrl(Constants.BASE_URL)
@@ -282,76 +317,61 @@ class MovieRepository(private val movieDao: MovieDao) {
 
     private val api = retrofit.create(MovieApi::class.java)
 
-    // Obtener películas desde la API
-    suspend fun getMoviesFromApi(page: Int): List<MovieEntity> {
-        val response = api.getMoviesPaged(page)
-        return response.results.map {
-            MovieEntity(
-                id = it.id,
-                title = it.title,
-                overview = it.overview,
-                posterPath = it.posterPath,
-                releaseDate = it.releaseDate,
-                voteAverage = it.voteAverage
-            )
-        }
+    suspend fun getMoviesPaged(page: Int): MovieResponse {
+        return api.getMoviesPaged(page)
     }
 
-    // Insertar en base de datos
     suspend fun insertMovies(movies: List<MovieEntity>) {
-        movieDao.insertAll(movies)
+        movieDao.insertMovies(movies)
     }
 
-    // Obtener todas las películas desde la base de datos
-    fun getAllMovies(): Flow<List<MovieEntity>> {
+    fun getAllMoviesFromDb(): Flow<List<MovieEntity>> {
         return movieDao.getAllMovies()
     }
+
+    fun getPagingSource(): PagingSource<Int, MovieEntity> {
+        return movieDao.getMoviesPagingSource()  // Asegúrate de que el DAO tenga esta función implementada
+    }
 }
-================================================================================
 
-File: ./app/src/main/java/cl/moviedbapp/di/AppModule.kt
 
-// AppModule.kt
+./app/src/main/java/cl/moviedbapp/di/DatabaseModule.kt
+
 package cl.moviedbapp.di
 
-import android.app.Application
+import android.content.Context
 import androidx.room.Room
-import cl.moviedbapp.db.MovieDatabase
-import cl.moviedbapp.repository.MovieRepository
+import cl.moviedbapp.data.MovieDatabase
+import cl.moviedbapp.model.MovieDao
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
 @Module
 @InstallIn(SingletonComponent::class)
-object AppModule {
+object DatabaseModule {
 
     @Provides
     @Singleton
-    fun provideMovieDatabase(app: Application): MovieDatabase {
+    fun provideDatabase(@ApplicationContext context: Context): MovieDatabase {  // Asegúrate de usar @ApplicationContext
         return Room.databaseBuilder(
-            app,
+            context.applicationContext,
             MovieDatabase::class.java,
-            "movie_database"
+            "movies.db"
         ).build()
     }
 
     @Provides
-    @Singleton
-    fun provideMovieDao(db: MovieDatabase) = db.movieDao()
-
-    @Provides
-    @Singleton
-    fun provideMovieRepository(movieDao: MovieDao): MovieRepository {
-        return MovieRepository(movieDao)
+    fun provideMovieDao(database: MovieDatabase): MovieDao {
+        return database.movieDao()
     }
 }
 
-================================================================================
 
-File: ./app/src/main/java/cl/moviedbapp/util/Constants.kt
+./app/src/main/java/cl/moviedbapp/util/Constants.kt
 
 package cl.moviedbapp.util
 
@@ -360,12 +380,10 @@ object Constants {
     const val API_KEY = "2cef883d1264659c4ce23a2ccf164ad4" // Replace with your actual API key
 }
 
-================================================================================
 
-File: ./app/src/main/java/cl/moviedbapp/model/Movie.kt
+./app/src/main/java/cl/moviedbapp/model/Movie.kt
 
 package cl.moviedbapp.model
-
 import com.google.gson.annotations.SerializedName
 
 data class Movie(
@@ -391,20 +409,61 @@ data class MovieResponse(
     val results: List<Movie>
 )
 
-================================================================================
 
-File: ./app/src/main/java/cl/moviedbapp/view/MovieDetailView.kt
+./app/src/main/java/cl/moviedbapp/model/MovieDao.kt
+
+package cl.moviedbapp.model
+
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import kotlinx.coroutines.flow.Flow
+import androidx.paging.PagingSource
+
+@Dao
+interface MovieDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertMovies(movies: List<MovieEntity>)
+
+    @Query("SELECT * FROM movies ORDER BY title ASC")
+    fun getMoviesPagingSource(): PagingSource<Int, MovieEntity>  // Paginación desde Room
+
+    @Query("SELECT * FROM movies ORDER BY title ASC")
+    fun getAllMovies(): Flow<List<MovieEntity>>
+}
+
+
+./app/src/main/java/cl/moviedbapp/model/MovieEntity.kt
+
+package cl.moviedbapp.model
+
+import androidx.room.ColumnInfo
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+
+@Entity(tableName = "movies")
+data class MovieEntity(
+    @PrimaryKey val id: Int,
+    @ColumnInfo(name = "title") val title: String,
+    @ColumnInfo(name = "overview") val overview: String,
+    @ColumnInfo(name = "poster_path") val posterPath: String?,
+    @ColumnInfo(name = "release_date") val releaseDate: String?,
+    @ColumnInfo(name = "vote_average") val voteAverage: Double
+)
+
+
+./app/src/main/java/cl/moviedbapp/view/MovieDetailView.kt
 
 package cl.moviedbapp.view
 
 import android.annotation.SuppressLint
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
@@ -414,8 +473,8 @@ import cl.moviedbapp.viewmodel.MovieViewModel
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
 fun MovieDetailView(movieId: String, viewModel: MovieViewModel, navController: NavController) {
-    // Recolecta el Flow y obtén los datos de la base de datos
-    val selectedMovie by viewModel.getMovieById(movieId).collectAsState(initial = null)
+    // Convierte el movieId de String a Int
+    val selectedMovie = viewModel.getMovieById(movieId.toIntOrNull() ?: 0)
 
     Scaffold(
         topBar = {
@@ -423,7 +482,7 @@ fun MovieDetailView(movieId: String, viewModel: MovieViewModel, navController: N
                 title = { Text(selectedMovie?.title ?: "Movie Detail") },
                 navigationIcon = {
                     IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
@@ -437,18 +496,17 @@ fun MovieDetailView(movieId: String, viewModel: MovieViewModel, navController: N
     }
 }
 
-================================================================================
 
-File: ./app/src/main/java/cl/moviedbapp/view/HomeView.kt
+./app/src/main/java/cl/moviedbapp/view/HomeView.kt
 
 package cl.moviedbapp.view
 
-import android.util.Log
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -458,26 +516,28 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.items
+import cl.moviedbapp.model.MovieEntity
 import cl.moviedbapp.viewmodel.MovieViewModel
 import coil.compose.SubcomposeAsyncImage
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Scaffold
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import cl.moviedbapp.db.MovieEntity
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeView(viewModel: MovieViewModel, navController: NavHostController) {
-    val movies by viewModel.movieList.collectAsState(initial = emptyList())
+    val coroutineScope = rememberCoroutineScope()
+    val moviePagingItems = viewModel.getMoviesPager().collectAsLazyPagingItems()
 
     Scaffold(
         topBar = { TopAppBar(title = { Text("Movies") }) }
     ) { padding ->
         LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
-            items(movies) { movie ->
-                MovieCard(movie) {
-                    navController.navigate("movieDetail/${movie.id}")
+            items(moviePagingItems) { movieEntity ->
+                if (movieEntity != null) {
+                    MovieCard(movieEntity) {
+                        navController.navigate("movieDetail/${movieEntity.id}")
+                    }
                 }
             }
         }
@@ -485,8 +545,7 @@ fun HomeView(viewModel: MovieViewModel, navController: NavHostController) {
 }
 
 @Composable
-fun MovieCard(movie: MovieEntity, onClick: () -> Unit) {
-    Log.d("MovieCard", "posterPath: ${movie}")
+fun MovieCard(movie: MovieEntity, onClick: () -> Unit) {  // Acepta MovieEntity en lugar de Movie
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -498,12 +557,7 @@ fun MovieCard(movie: MovieEntity, onClick: () -> Unit) {
         Column(modifier = Modifier.fillMaxWidth()) {
 
             // Imagen de la película
-            // Manejar la imagen: si posterPath es nulo, usar una imagen de marcador de posición
-            val imageUrl = if (movie.posterPath != null) {
-                "https://image.tmdb.org/t/p/w500${movie.posterPath}"
-            } else {
-                "https://image.tmdb.org/t/p/w500/1E5baAaEse26fej7uHcjOgEE2t2.jpg"  // URL de marcador de posición
-            }
+            val imageUrl = "https://image.tmdb.org/t/p/w500/${movie.posterPath}"
             SubcomposeAsyncImage(
                 model = imageUrl,
                 contentDescription = movie.title,
@@ -572,103 +626,22 @@ fun MovieCard(movie: MovieEntity, onClick: () -> Unit) {
 }
 
 
-
-================================================================================
-
-File: ./app/src/main/java/cl/moviedbapp/db/MovieDao.kt
-
-package cl.moviedbapp.db
-
-import androidx.room.Dao
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
-import androidx.room.Query
-import kotlinx.coroutines.flow.Flow
-
-@Dao
-interface MovieDao {
-    @Query("SELECT * FROM movies")
-    fun getAllMovies(): Flow<List<MovieEntity>>
-
-    @Query("SELECT * FROM movies WHERE id = :id")
-    fun getMovieById(id: Int): MovieEntity?
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAll(movies: List<MovieEntity>)
-
-    @Query("DELETE FROM movies")
-    suspend fun clearMovies()
-}
-
-================================================================================
-
-File: ./app/src/main/java/cl/moviedbapp/db/MovieEntity.kt
-
-package cl.moviedbapp.db
-
-import androidx.room.Entity
-import androidx.room.PrimaryKey
-
-@Entity(tableName = "movies")
-data class MovieEntity(
-    @PrimaryKey val id: Int,
-    val title: String,
-    val overview: String,
-    val posterPath: String?,
-    val releaseDate: String?,
-    val voteAverage: Double
-)
-
-================================================================================
-
-File: ./app/src/main/java/cl/moviedbapp/db/MovieDatabase.kt
-
-package cl.moviedbapp.db
-
-import android.content.Context
-import androidx.room.Database
-import androidx.room.Room
-import androidx.room.RoomDatabase
-
-@Database(entities = [MovieEntity::class], version = 1)
-abstract class MovieDatabase : RoomDatabase() {
-    abstract fun movieDao(): MovieDao
-
-    companion object {
-        @Volatile
-        private var INSTANCE: MovieDatabase? = null
-
-        fun getDatabase(context: Context): MovieDatabase {
-            return INSTANCE ?: synchronized(this) {
-                val instance = Room.databaseBuilder(
-                    context.applicationContext,
-                    MovieDatabase::class.java,
-                    "movie_database"
-                ).build()
-                INSTANCE = instance
-                instance
-            }
-        }
-    }
-}
-
-================================================================================
-
-File: ./app/src/main/java/cl/moviedbapp/data/MovieDataSource.kt
+./app/src/main/java/cl/moviedbapp/data/MovieDataSource.kt
 
 package cl.moviedbapp.data
 
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
-import cl.moviedbapp.db.MovieEntity
+import cl.moviedbapp.model.Movie
 import cl.moviedbapp.repository.MovieRepository
 
-class MovieDataSource(private val repository: MovieRepository) : PagingSource<Int, MovieEntity>() {
+class MovieDataSource(private val repository: MovieRepository) : PagingSource<Int, Movie>() {
 
-    override suspend fun load(params: LoadParams<Int>): LoadResult<Int, MovieEntity> {
+    override suspend fun load(params: LoadParams<Int>): LoadResult<Int, Movie> {
         return try {
             val currentPage = params.key ?: 1  // Comienza en la página 1
-            val movies = repository.getMoviesFromApi(currentPage) // Llama al método correcto del repositorio
+            val response = repository.getMoviesPaged(currentPage)
+            val movies = response.results
 
             LoadResult.Page(
                 data = movies,
@@ -680,7 +653,7 @@ class MovieDataSource(private val repository: MovieRepository) : PagingSource<In
         }
     }
 
-    override fun getRefreshKey(state: PagingState<Int, MovieEntity>): Int? {
+    override fun getRefreshKey(state: PagingState<Int, Movie>): Int? {
         return state.anchorPosition?.let { position ->
             state.closestPageToPosition(position)?.prevKey?.plus(1)
                 ?: state.closestPageToPosition(position)?.nextKey?.minus(1)
@@ -688,5 +661,19 @@ class MovieDataSource(private val repository: MovieRepository) : PagingSource<In
     }
 }
 
-================================================================================
+
+./app/src/main/java/cl/moviedbapp/data/MovieDatabase.kt
+
+package cl.moviedbapp.data
+
+import androidx.room.Database
+import androidx.room.RoomDatabase
+import cl.moviedbapp.model.MovieDao
+import cl.moviedbapp.model.MovieEntity
+
+@Database(entities = [MovieEntity::class], version = 1)
+abstract class MovieDatabase : RoomDatabase() {
+    abstract fun movieDao(): MovieDao
+}
+
 

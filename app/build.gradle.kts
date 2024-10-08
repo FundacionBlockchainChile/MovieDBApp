@@ -105,6 +105,10 @@ dependencies {
 
     // Paging Compose (para usarlo con Jetpack Compose)
     implementation("androidx.paging:paging-compose:1.0.0-alpha18")
+
+    // Pagination
+    implementation("androidx.paging:paging-runtime:3.1.0")
+    implementation("androidx.room:room-paging:2.5.0") 
 }
 
 

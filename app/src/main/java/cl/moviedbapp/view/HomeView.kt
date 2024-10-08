@@ -3,6 +3,9 @@ package cl.moviedbapp.view
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
@@ -17,7 +20,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavHostController
 import androidx.paging.compose.collectAsLazyPagingItems
 import androidx.paging.compose.items
-import cl.moviedbapp.model.Movie
+import cl.moviedbapp.model.MovieEntity
 import cl.moviedbapp.viewmodel.MovieViewModel
 import coil.compose.SubcomposeAsyncImage
 import kotlinx.coroutines.launch
@@ -29,14 +32,34 @@ fun HomeView(viewModel: MovieViewModel, navController: NavHostController) {
     val moviePagingItems = viewModel.getMoviesPager().collectAsLazyPagingItems()
 
     Scaffold(
-        topBar = { TopAppBar(title = { Text("Movies") }) }
+        topBar = {
+            TopAppBar(
+                title = { Text("Movies") },
+                actions = {
+                    // Botón para agregar una película
+                    IconButton(onClick = {
+                        coroutineScope.launch {
+                            viewModel.fetchMoviesFromApiAndSave()  // Función para obtener películas y guardarlas en la base de datos
+                        }
+                    }) {
+                        Icon(Icons.Default.Add, contentDescription = "Add Movie")
+                    }
+                }
+            )
+        }
     ) { padding ->
         LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
-            items(moviePagingItems) { movie ->
-                if (movie != null) {
-                    MovieCard(movie) {
-                        navController.navigate("movieDetail/${movie.id}")
-                    }
+            items(moviePagingItems) { movieEntity ->
+                if (movieEntity != null) {
+                    MovieCard(
+                        movie = movieEntity,
+                        onClick = { navController.navigate("movieDetail/${movieEntity.id}") },  // Para navegar a los detalles
+                        onDeleteClick = {  // Para eliminar la película
+                            coroutineScope.launch {
+                                viewModel.deleteMovie(movieEntity)
+                            }
+                        }
+                    )
                 }
             }
         }
@@ -44,34 +67,29 @@ fun HomeView(viewModel: MovieViewModel, navController: NavHostController) {
 }
 
 @Composable
-fun MovieCard(movie: Movie, onClick: () -> Unit) {
+fun MovieCard(movie: MovieEntity, onClick: () -> Unit, onDeleteClick: () -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp)
             .clickable { onClick() },
         shape = MaterialTheme.shapes.medium,
-        elevation = CardDefaults.cardElevation(8.dp) // Mayor elevación para resaltar la tarjeta
+        elevation = CardDefaults.cardElevation(8.dp)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-
-            // Imagen de la película
             val imageUrl = "https://image.tmdb.org/t/p/w500/${movie.posterPath}"
             SubcomposeAsyncImage(
                 model = imageUrl,
                 contentDescription = movie.title,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(200.dp),  // Imagen destacada
-                contentScale = ContentScale.Crop // Ajustar la imagen al tamaño sin deformar
+                    .height(180.dp), // Reducimos la altura de la imagen para darle más espacio al texto
+                contentScale = ContentScale.Crop
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Contenedor para el título y detalles
             Column(modifier = Modifier.padding(16.dp)) {
-
-                // Título de la película
                 Text(
                     text = movie.title,
                     style = MaterialTheme.typography.titleLarge.copy(
@@ -84,25 +102,22 @@ fun MovieCard(movie: Movie, onClick: () -> Unit) {
 
                 Spacer(modifier = Modifier.height(4.dp))
 
-                // Descripción (truncada si es muy larga)
                 Text(
                     text = movie.overview,
                     style = MaterialTheme.typography.bodyMedium.copy(
                         color = Color.Gray
                     ),
-                    maxLines = 3,
+                    maxLines = 4,  // Ajustamos para mostrar más texto
                     overflow = TextOverflow.Ellipsis
                 )
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Detalles adicionales: Fecha y Calificación
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Fecha de lanzamiento
                     Text(
                         text = "Release: ${movie.releaseDate}",
                         style = MaterialTheme.typography.bodySmall.copy(
@@ -110,7 +125,6 @@ fun MovieCard(movie: Movie, onClick: () -> Unit) {
                         )
                     )
 
-                    // Calificación
                     Text(
                         text = "⭐ ${movie.voteAverage}",
                         style = MaterialTheme.typography.bodyMedium.copy(
@@ -118,10 +132,13 @@ fun MovieCard(movie: Movie, onClick: () -> Unit) {
                             color = MaterialTheme.colorScheme.primary
                         )
                     )
+
+                    IconButton(onClick = onDeleteClick) {
+                        Icon(Icons.Default.Delete, contentDescription = "Delete Movie", tint = Color.Red)
+                    }
                 }
             }
         }
     }
 }
-
 

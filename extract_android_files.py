@@ -15,7 +15,7 @@ def collect_relevant_files_content(root_dir):
                 file_path = os.path.join(root, file)
                 with open(file_path, 'r', encoding='utf-8') as f:
                     file_content = f.read()
-                    project_files.append(f"File: {file_path}\n\n{file_content}\n{'=' * 80}\n\n")
+                    project_files.append(f"{file_path}\n\n{file_content}\n\n")
     
     return project_files
 
